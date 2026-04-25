@@ -1,0 +1,29 @@
+[project]
+name = "moshi"
+version = "0.2.2"
+description = "Vendored Moshi runtime used by this repository"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "numpy<2.3,>=1.26",
+    "safetensors<0.6,>=0.4.0",
+    "huggingface-hub<0.29,>=0.24",
+    "bitsandbytes<0.46,>=0.45; sys_platform == 'linux'",
+    "einops<0.9,>=0.7",
+    "sentencepiece==0.2",
+    "sounddevice==0.5",
+    "sphn>=0.1.4",
+    "torch<2.7,>=2.2.0",
+    "aiohttp<3.12,>=3.10.5",
+    "pytest>=8.3.3",
+]
+
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools]
+include-package-data = false
+
+[tool.setuptools.packages.find]
+include = ["moshi*"]

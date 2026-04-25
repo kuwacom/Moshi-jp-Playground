@@ -1,0 +1,43 @@
+# OS・エディタ固有ファイル
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+.codex
+
+# Python 実行環境・依存キャッシュ
+.python-version
+.venv/
+venv/
+.uv-cache/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# 環境変数・ローカル設定
+.env
+.env.*
+!.env.example
+
+# ローカルで取得するモデルキャッシュ
+models/huggingface/
+
+# ビルド成果物・ログ
+builds/
+dist/
+site/
+*.log
+
+# このリポジトリでローカル用途に使う補助ファイル
+archive/
+functions/
+memo/
+deploy.sh
+.wrangler/
