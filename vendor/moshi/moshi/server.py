@@ -47,7 +47,8 @@ class ServerState:
     lock: asyncio.Lock
 
     def __init__(self, model_type: str, mimi: MimiModel, text_tokenizer: sentencepiece.SentencePieceProcessor,
-                 lm: LMModel, cfg_coef: float, device: str | torch.device, **kwargs):
+                 lm: LMModel, cfg_coef: float, device: str | torch.device,
+                 text_prompt: str | None = None, text_prompt_visible: bool = False, **kwargs):
         self.model_type = model_type
         self.mimi = mimi
         self.text_tokenizer = text_tokenizer
@@ -57,9 +58,53 @@ class ServerState:
         self.device = device
         self.frame_size = int(self.mimi.sample_rate / self.mimi.frame_rate)
         self.lock = asyncio.Lock()
+        self.text_prompt = text_prompt or ""
+        self.text_prompt_visible = text_prompt_visible
+        self.text_prompt_tokens = self._encode_text_prompt(self.text_prompt, lm.text_card)
 
         self.mimi.streaming_forever(1)
         self.lm_gen.streaming_forever(1)
+
+    def _encode_text_prompt(self, text_prompt: str, text_card: int) -> list[int]:
+        if text_prompt == "":
+            return []
+        token_ids = self.text_tokenizer.encode(text_prompt, out_type=int)
+        tokens = [int(token_id) for token_id in token_ids if 0 <= int(token_id) < text_card]
+        if len(tokens) != len(token_ids):
+            log("warning", "text prompt contains token ids outside the model vocabulary")
+        log("info", f"text prompt prepared with {len(tokens)} tokens")
+        return tokens
+
+    async def prime_text_prompt(self, ws: web.WebSocketResponse, opus_writer: sphn.OpusStreamWriter) -> None:
+        if not self.text_prompt_tokens:
+            return
+
+        log("info", "priming text prompt")
+        silence = torch.zeros(1, 1, self.frame_size, dtype=torch.float32, device=self.device)
+        for token_id in self.text_prompt_tokens:
+            codes = self.mimi.encode(silence)
+            forced_text_token = torch.tensor([token_id], dtype=torch.long, device=self.device)
+            tokens = self.lm_gen.step(codes, forced_text_token=forced_text_token)
+            if tokens is not None:
+                main_pcm = self.mimi.decode(tokens[:, 1:])
+                main_pcm = main_pcm.cpu()
+                opus_writer.append_pcm(main_pcm[0, 0].numpy())
+            await asyncio.sleep(0)
+
+        padding_token = self.lm_gen.lm_model.text_padding_token_id
+        for _ in range(self.lm_gen.max_delay):
+            codes = self.mimi.encode(silence)
+            forced_text_token = torch.tensor([padding_token], dtype=torch.long, device=self.device)
+            tokens = self.lm_gen.step(codes, forced_text_token=forced_text_token)
+            if tokens is not None:
+                main_pcm = self.mimi.decode(tokens[:, 1:])
+                main_pcm = main_pcm.cpu()
+                opus_writer.append_pcm(main_pcm[0, 0].numpy())
+            await asyncio.sleep(0)
+
+        if self.text_prompt_visible:
+            await ws.send_bytes(b"\x02" + bytes(self.text_prompt, encoding="utf8"))
+        log("info", "text prompt primed")
 
     def warmup(self):
         for chunk in range(4):
@@ -169,6 +214,7 @@ class ServerState:
             self.lm_gen.reset_streaming()
             # Send the handshake.
             await ws.send_bytes(b"\x00")
+            await self.prime_text_prompt(ws, opus_writer)
             await asyncio.gather(opus_loop(), recv_loop(), send_loop())
         log("info", "done with connection")
         return ws
@@ -179,6 +225,10 @@ def main():
     parser.add_argument("--host", default="localhost", type=str)
     parser.add_argument("--port", default=8998, type=int)
     parser.add_argument("--static", type=str)
+    parser.add_argument("--text-prompt", type=str,
+                        help="Prime each new conversation with this text as prior assistant text.")
+    parser.add_argument("--text-prompt-visible", action="store_true",
+                        help="Also send the text prompt to the Web UI transcript on connection.")
     parser.add_argument("--gradio-tunnel", action='store_true', help='Activate a gradio tunnel.')
     parser.add_argument("--gradio-tunnel-token",
                         help='Provide a custom (secret) token here to keep getting the same URL.')
@@ -233,8 +283,10 @@ def main():
     lm = checkpoint_info.get_moshi(device=args.device, dtype=args.dtype)
     log("info", "moshi loaded")
 
-    state = ServerState(checkpoint_info.model_type, mimi, text_tokenizer, lm, args.cfg_coef, args.device,
-                        **checkpoint_info.lm_gen_config)
+    state = ServerState(
+        checkpoint_info.model_type, mimi, text_tokenizer, lm, args.cfg_coef, args.device,
+        text_prompt=args.text_prompt, text_prompt_visible=args.text_prompt_visible,
+        **checkpoint_info.lm_gen_config)
     log("info", "warming up the model")
     state.warmup()
     app = web.Application()

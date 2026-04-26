@@ -71,6 +71,12 @@ HF_REPO=llm-jp/llm-jp-moshi-v1 ./start.sh
 ./startQ8.sh
 ```
 
+会話開始直後に冒頭発話を入れたい場合です。
+
+```bash
+./start.sh --text-prompt "はじめまして。聞こえていますか？"
+```
+
 ### 3. `moshi.server` を直接使う場合
 
 ```bash

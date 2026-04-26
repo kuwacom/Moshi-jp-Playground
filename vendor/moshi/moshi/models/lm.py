@@ -459,7 +459,11 @@ class LMGen(StreamingModule[_LMGenState]):
         return state
 
     @torch.no_grad()
-    def step(self, input_tokens: torch.Tensor) -> torch.Tensor | None:
+    def step(
+        self,
+        input_tokens: torch.Tensor,
+        forced_text_token: torch.Tensor | None = None,
+    ) -> torch.Tensor | None:
         state = self._streaming_state
         if state is None:
             raise RuntimeError(
@@ -520,6 +524,9 @@ class LMGen(StreamingModule[_LMGenState]):
         assert text_token.shape[2] == 1
         assert text_token.shape[1] == 1, "Only one text stream supported."
         text_token = text_token[:, 0, 0]  # shape is [B]
+        if forced_text_token is not None:
+            assert forced_text_token.shape == (B,), forced_text_token.shape
+            text_token = forced_text_token.to(device=text_token.device, dtype=text_token.dtype)
         audio_tokens = state.graphed_depth(text_token, transformer_out)
 
         # ensure we don't overwrite prompt tokens, we only write over ungenerated tokens

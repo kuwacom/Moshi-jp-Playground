@@ -71,6 +71,12 @@ Run the quantized variant:
 ./startQ8.sh
 ```
 
+Prime the beginning of each conversation with a short opening line:
+
+```bash
+./start.sh --text-prompt "Nice to meet you. Can you hear me?"
+```
+
 ### 3. Run `moshi.server` directly
 
 ```bash
